@@ -84,6 +84,12 @@
       color: #666;
       margin-top: 4px;
     }
+    footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: #777;
+    }
     @media (max-width: 480px) {
       body { padding: 10px; }
       th, td { padding: 8px 6px; }
@@ -138,6 +144,10 @@
       <div class="small" id="countdownNote"></div>
     </div>
   </div>
+
+  <footer>
+    تصميم وتطوير: <strong>عبد الرحمن سرسك</strong>
+  </footer>
 
   <script>
     const statusEl         = document.getElementById("status");
@@ -198,7 +208,7 @@
         gregDateEl.textContent  = `التاريخ الميلادي: ${g.date} (${g.weekday.en})`;
         hijriDateEl.textContent = `التاريخ الهجري: ${h.date} ${h.month.ar} ${h.year} هـ`;
 
-        statusEl.textContent = "تم التحديث ✅";
+        statusEl.textContent = "تم التحديث حسب موقعك الحالي ✅";
 
         setupNextPrayerCountdown(timings);
       } catch (e) {
@@ -270,15 +280,12 @@
 
     function handleError(err) {
       console.warn(err);
-      statusEl.textContent = "تعذَّر تحديد موقعك تلقائيًا.";
-
-      // 🔁 خطة احتياطية: استخدام الرياض كافتراضي
-      const fallbackLat = 24.7136;
-      const fallbackLon = 46.6753;
-      currentLat = fallbackLat;
-      currentLon = fallbackLon;
-      locationEl.textContent = "تم استخدام: الرياض، المملكة العربية السعودية (موقع افتراضي)";
-      getPrayerTimes(fallbackLat, fallbackLon, methodSelectEl.value);
+      if (err && err.code === err.PERMISSION_DENIED) {
+        statusEl.textContent = "لم يتم السماح بالوصول للموقع. الرجاء تفعيل إذن الموقع من إعدادات المتصفح ثم إعادة تحميل الصفحة.";
+      } else {
+        statusEl.textContent = "تعذَّر تحديد موقعك. تأكد من تفعيل خدمة الموقع أو جرّب متصفحًا آخر.";
+      }
+      locationEl.textContent = "";
     }
 
     methodSelectEl.addEventListener("change", () => {
@@ -290,21 +297,8 @@
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(handlePosition, handleError);
     } else {
-      statusEl.textContent = "متصفحك لا يدعم تحديد الموقع الجغرافي. سيتم استخدام الرياض كافتراضي.";
-      handleError({});
+      statusEl.textContent = "متصفحك لا يدعم تحديد الموقع الجغرافي. جرّب متصفحًا آخر.";
     }
   </script>
-    <div style="
-        text-align: center;
-        margin-top: 20px;
-        font-size: 0.9rem;
-        color: #555;
-        padding: 10px;
-    ">
-        <span>تصميم وتطوير: </span>
-        <strong>عبد الرحمن سرسك</strong>
-    </div>
 </body>
 </html>
-
-

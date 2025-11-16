@@ -144,5 +144,157 @@
     const locationEl       = document.getElementById("location");
     const gregDateEl       = document.getElementById("gregDate");
     const hijriDateEl      = document.getElementById("hijriDate");
-    const methodSelectEl
+    const methodSelectEl   = document.getElementById("methodSelect");
+    const nextPrayerNameEl = document.getElementById("nextPrayerName");
+    const countdownEl      = document.getElementById("countdown");
+    const countdownNoteEl  = document.getElementById("countdownNote");
+
+    let currentLat  = null;
+    let currentLon  = null;
+    let countdownInterval = null;
+
+    async function fetchCityName(lat, lon) {
+      try {
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=ar`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const city    = data.city || data.locality || data.principalSubdivision || "";
+        const country = data.countryName || "";
+
+        if (city || country) {
+          locationEl.textContent = `الموقع الحالي: ${city ? city + "، " : ""}${country}`;
+        } else {
+          locationEl.textContent = `الموقع الحالي (إحداثيات): خط العرض ${lat.toFixed(4)}، خط الطول ${lon.toFixed(4)}`;
+        }
+      } catch (e) {
+        console.error(e);
+        locationEl.textContent = `خط العرض: ${lat.toFixed(4)}، خط الطول: ${lon.toFixed(4)}`;
+      }
+    }
+
+    async function getPrayerTimes(lat, lon, method) {
+      try {
+        statusEl.textContent = "جاري جلب مواقيت الصلاة...";
+        const url = `https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lon}&method=${method}`;
+        const res = await fetch(url);
+        const json = await res.json();
+
+        if (json.code !== 200) throw new Error("خطأ في جلب المواقيت");
+
+        const data    = json.data;
+        const timings = data.timings;
+
+        document.getElementById("fajr").textContent    = timings.Fajr;
+        document.getElementById("sunrise").textContent = timings.Sunrise;
+        document.getElementById("dhuhr").textContent   = timings.Dhuhr;
+        document.getElementById("asr").textContent     = timings.Asr;
+        document.getElementById("maghrib").textContent = timings.Maghrib;
+        document.getElementById("isha").textContent    = timings.Isha;
+
+        const g = data.date.gregorian;
+        const h = data.date.hijri;
+
+        gregDateEl.textContent  = `التاريخ الميلادي: ${g.date} (${g.weekday.en})`;
+        hijriDateEl.textContent = `التاريخ الهجري: ${h.date} ${h.month.ar} ${h.year} هـ`;
+
+        statusEl.textContent = "تم التحديث ✅";
+
+        setupNextPrayerCountdown(timings);
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "حدث خطأ أثناء جلب المواقيت.";
+      }
+    }
+
+    function createDateWithTime(timeStr) {
+      const [h, m] = timeStr.split(":").map(Number);
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    }
+
+    function setupNextPrayerCountdown(timings) {
+      if (countdownInterval) clearInterval(countdownInterval);
+
+      const now = new Date();
+      const prayers = [
+        { name: "الفجر",  time: createDateWithTime(timings.Fajr) },
+        { name: "الظهر",  time: createDateWithTime(timings.Dhuhr) },
+        { name: "العصر",  time: createDateWithTime(timings.Asr) },
+        { name: "المغرب", time: createDateWithTime(timings.Maghrib) },
+        { name: "العشاء", time: createDateWithTime(timings.Isha) },
+      ];
+
+      let next = prayers.find(p => p.time > now);
+
+      if (!next) {
+        nextPrayerNameEl.textContent = "—";
+        countdownEl.textContent      = "—:—:—";
+        countdownNoteEl.textContent  = "انتهت صلوات اليوم. يتم التحديث بعد منتصف الليل.";
+        return;
+      }
+
+      nextPrayerNameEl.textContent = next.name;
+      countdownNoteEl.textContent  = "";
+
+      function updateCountdown() {
+        const now  = new Date();
+        const diff = next.time - now;
+        if (diff <= 0) {
+          countdownEl.textContent = "حان وقت الأذان";
+          clearInterval(countdownInterval);
+          return;
+        }
+        const totalSeconds = Math.floor(diff / 1000);
+        const hours   = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        countdownEl.textContent =
+          String(hours).padStart(2,"0") + ":" +
+          String(minutes).padStart(2,"0") + ":" +
+          String(seconds).padStart(2,"0");
+      }
+
+      updateCountdown();
+      countdownInterval = setInterval(updateCountdown, 1000);
+    }
+
+    function handlePosition(position) {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      currentLat = lat;
+      currentLon = lon;
+      fetchCityName(lat, lon);
+      getPrayerTimes(lat, lon, methodSelectEl.value);
+    }
+
+    function handleError(err) {
+      console.warn(err);
+      statusEl.textContent = "تعذَّر تحديد موقعك تلقائيًا.";
+
+      // 🔁 خطة احتياطية: استخدام الرياض كافتراضي
+      const fallbackLat = 24.7136;
+      const fallbackLon = 46.6753;
+      currentLat = fallbackLat;
+      currentLon = fallbackLon;
+      locationEl.textContent = "تم استخدام: الرياض، المملكة العربية السعودية (موقع افتراضي)";
+      getPrayerTimes(fallbackLat, fallbackLon, methodSelectEl.value);
+    }
+
+    methodSelectEl.addEventListener("change", () => {
+      if (currentLat !== null && currentLon !== null) {
+        getPrayerTimes(currentLat, currentLon, methodSelectEl.value);
+      }
+    });
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(handlePosition, handleError);
+    } else {
+      statusEl.textContent = "متصفحك لا يدعم تحديد الموقع الجغرافي. سيتم استخدام الرياض كافتراضي.";
+      handleError({});
+    }
+  </script>
+</body>
+</html>
+
 

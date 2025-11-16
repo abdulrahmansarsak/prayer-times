@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>مواقيت الصلاة حسب موقعك</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 16px;
+      color: #222;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 0.3rem;
+    }
+
+    #status {
+      text-align: center;
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 0.4rem;
+    }
+
+    #location, #dates, #methodWrapper {
+      text-align: center;
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+    }
+
+    #dates div {
+      margin: 2px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 10px 0 14px;
+    }
+
+    th, td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #eee;
+      text-align: center;
+    }
+
+    th {
+      background: #1976d2;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    #countdownBox {
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      text-align: center;
+      font-size: 1rem;
+    }
+
+    #nextPrayerName {
+      font-weight: 600;
+    }
+
+    #countdown {
+      font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 1.1rem;
+    }
+
+    select {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-family: inherit;
+      margin-top: 4px;
+    }
+
+    .small {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+      th, td {
+        padding: 8px 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>مواقيت الصلاة اليوم</h1>
+    <div id="status">جاري طلب إذن الوصول لموقعك...</div>
+
+    <!-- المدينة والدولة -->
+    <div id="location"></div>
+
+    <!-- التاريخ الميلادي والهجري -->
+    <div id="dates">
+      <div id="gregDate">التاريخ الميلادي: —</div>
+      <div id="hijriDate">التاريخ الهجري: —</div>
+    </div>
+
+    <!-- اختيار طريقة الحساب -->
+    <div id="methodWrapper">
+      <label for="methodSelect">طريقة الحساب:</label>
+      <select id="methodSelect">
+        <option value="4">أم القرى - مكة المكرمة (4)</option>
+        <option value="3">رابطة العالم الإسلامي (3)</option>
+        <option value="5">الهيئة العامة المصرية للمساحة (5)</option>
+        <option value="2">الاتحاد الإسلامي بأمريكا الشمالية (2)</option>
+        <option value="1">الجمعية الإسلامية بأمريكا الشمالية (1)</option>
+        <option value="0">جامعة أم القرى الافتراضية (0)</option>
+      </select>
+      <div class="small">يمكن تغيير طريقة الحساب وسيتم تحديث المواقيت فورًا.</div>
+    </div>
+
+    <!-- جدول المواقيت -->
+    <table>
+      <thead>
+        <tr>
+          <th>الصلاة</th>
+          <th>الوقت</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>الفجر</td><td id="fajr">—</td></tr>
+        <tr><td>الشروق</td><td id="sunrise">—</td></tr>
+        <tr><td>الظهر</td><td id="dhuhr">—</td></tr>
+        <tr><td>العصر</td><td id="asr">—</td></tr>
+        <tr><td>المغرب</td><td id="maghrib">—</td></tr>
+        <tr><td>العشاء</td><td id="isha">—</td></tr>
+      </tbody>
+    </table>
+
+    <!-- العد التنازلي -->
+    <div id="countdownBox">
+      <div>الوقت المتبقي لصلاة <span id="nextPrayerName">—</span>:</div>
+      <div id="countdown">—:—:—</div>
+      <div class="small" id="countdownNote"></div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl        = document.getElementById("status");
+    const locationEl      = document.getElementById("location");
+    const gregDateEl      = document.getElementById("gregDate");
+    const hijriDateEl     = document.getElementById("hijriDate");
+    const methodSelectEl  = document.getElementById("methodSelect");
+    const nextPrayerNameEl = document.getElementById("nextPrayerName");
+    const countdownEl     = document.getElementById("countdown");
+    const countdownNoteEl = document.getElementById("countdownNote");
+
+    let currentLat  = null;
+    let currentLon  = null;
+    let countdownInterval = null;
+
+    // جلب اسم المدينة والدولة عبر Reverse Geocoding
+    async function fetchCityName(lat, lon) {
+      try {
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=ar`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const city    = data.city || data.locality || data.principalSubdivision || "";
+        const country = data.countryName || "";
+
+        if (city || country) {
+          locationEl.textContent = `الموقع الحالي: ${city ? city + "، " : ""}${country}`;
+        } else {
+          locationEl.textContent = `الموقع الحالي (إحداثيات): خط العرض ${lat.toFixed(4)}، خط الطول ${lon.toFixed(4)}`;
+        }
+      } catch (e) {
+        console.error(e);
+        locationEl.textContent = `خط العرض: ${lat.toFixed(4)}، خط الطول: ${lon.toFixed(4)}`;
+      }
+    }
+
+    // جلب مواقيت الصلاة من AlAdhan API
+    async function getPrayerTimes(lat, lon, method) {
+      try {
+        statusEl.textContent = "جاري جلب مواقيت الصلاة...";
+        const url = `https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lon}&method=${method}`;
+        const res = await fetch(url);
+        const json = await res.json();
+
+        if (json.code !== 200) {
+          throw new Error("خطأ في جلب المواقيت");
+        }
+
+        const data    = json.data;
+        const timings = data.timings;
+
+        // تعبئة المواقيت
+        document.getElementById("fajr").textContent    = timings.Fajr;
+        document.getElementById("sunrise").textContent = timings.Sunrise;
+        document.getElementById("dhuhr").textContent   = timings.Dhuhr;
+        document.getElementById("asr").textContent     = timings.Asr;
+        document.getElementById("maghrib").textContent = timings.Maghrib;
+        document.getElementById("isha").textContent    = timings.Isha;
+
+        // التاريخ الميلادي والهجري
+        const g = data.date.gregorian;
+        const h = data.date.hijri;
+
+        gregDateEl.textContent  = `التاريخ الميلادي: ${g.date} (${g.weekday.en})`;
+        hijriDateEl.textContent = `التاريخ الهجري: ${h.date} ${h.month.ar} ${h.year} هـ`;
+
+        statusEl.textContent = "تم التحديث حسب موقعك الحالي ✅";
+
+        setupNextPrayerCountdown(timings);
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "حدث خطأ أثناء جلب المواقيت.";
+      }
+    }
+
+    function createDateWithTime(timeStr) {
+      const [h, m] = timeStr.split(":").map(Number);
+      const now    = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    }
+
+    function setupNextPrayerCountdown(timings) {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+
+      const now = new Date();
